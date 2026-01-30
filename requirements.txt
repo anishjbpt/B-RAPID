@@ -11,3 +11,5 @@ python-docx>=1.0.0
 
 # Optional: if any of your parsers fetch remote files (not visible in streamlit_app.py)
 requests>=2.31,<3
+
+-e .
