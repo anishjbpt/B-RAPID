@@ -1,0 +1,14 @@
+setup.py
+src/hdbcv2dsp/__init__.py
+src/hdbcv2dsp/artifacts.py
+src/hdbcv2dsp/parse_cv.py
+src/hdbcv2dsp/parse_procedure.py
+src/hdbcv2dsp/parse_sql_view.py
+src/hdbcv2dsp/render_docx.py
+src/hdbcv2dsp/render_docx_general.py
+src/hdbcv2dsp/summarize.py
+src/hdbcv2dsp/unify.py
+src/hdbcv2dsp.egg-info/PKG-INFO
+src/hdbcv2dsp.egg-info/SOURCES.txt
+src/hdbcv2dsp.egg-info/dependency_links.txt
+src/hdbcv2dsp.egg-info/top_level.txt
