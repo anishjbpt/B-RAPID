@@ -9,8 +9,5 @@ lxml>=4.9,<6    # for XML parsing in your hdb* modules
 # DOCX generation
 python-docx>=1.0.0
 
-# Optional: if you read/save parquet/arrow anywhere; remove if unused
-pyarrow>=10,<18
-
 # Optional: if any of your parsers fetch remote files (not visible in streamlit_app.py)
 requests>=2.31,<3
