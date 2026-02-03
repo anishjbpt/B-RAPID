@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Set
 import re
 
 @dataclass
@@ -9,26 +9,62 @@ class SQLViewModel:
     columns: List[str] = field(default_factory=list)
     inputs: List[str] = field(default_factory=list)  # upstream tables/views
 
+# split on commas that are NOT inside parentheses
+_COMMA_OUTSIDE_PARENS = re.compile(r',(?=(?:[^()]*\([^()]*\))*[^()]*$)')
+
+# CREATE [OR REPLACE] VIEW <identifier>
+_VIEW_NAME_RE = re.compile(
+    r'CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+'
+    r'((?:"[^"]+"|\w+)(?:\.(?:"[^"]+"|\w+))?)',
+    re.IGNORECASE
+)
+
+# SELECT ... FROM  (capture the select list)
+_SELECT_LIST_RE = re.compile(
+    r'SELECT\s+(.*?)\s+FROM\b',
+    re.IGNORECASE | re.DOTALL
+)
+
+# FROM / JOIN sources (schema-qualified, quoted or unquoted)
+_SOURCE_TOKENS_RE = re.compile(
+    r'\bFROM\s+((?:"[^"]+"|\w+)(?:\.(?:"[^"]+"|\w+))?)'
+    r'|'
+    r'\b(?:LEFT|RIGHT|FULL|INNER|OUTER|CROSS)?\s*JOIN\s+((?:"[^"]+"|\w+)(?:\.(?:"[^"]+"|\w+))?)',
+    re.IGNORECASE
+)
+
+# Correctly handle HTML &gt; -> >
+_HTML_GT = re.compile(r'&gt;', re.IGNORECASE)
+
+def _norm_ident(s: str) -> str:
+    s = s.strip()
+    if s.startswith('"') and s.endswith('"') and len(s) >= 2:
+        return s[1:-1]
+    return s
+
 def parse_hdbview_or_sql(path: str) -> SQLViewModel:
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         sql = f.read()
 
-    # 1) View name
-    m = re.search(r'CREATE\s+(OR\s+REPLACE\s+)?VIEW\s+("?[\w:#.$/]+"?)', sql, re.IGNORECASE)
-    name = m.group(2).strip('"') if m else "UNKNOWN_VIEW"
+    # normalize common HTML entity if present in uploads
+    sql = _HTML_GT.sub('>', sql)
 
-    # 2) Select list (very simple—good enough for MVP)
-    cols: List[str] = []
-    sel = re.search(r'SELECT\s+(.*?)\s+FROM\s', sql, re.IGNORECASE | re.DOTALL)
+    # 1) view name
+    m = _VIEW_NAME_RE.search(sql)
+    name = _norm_ident(m.group(1)) if m else "UNKNOWN_VIEW"
+
+    # 2) select list -> columns[]
+    columns: List[str] = []
+    sel = _SELECT_LIST_RE.search(sql)
     if sel:
-        # split commas not within parentheses
-        cols = [c.strip() for c in re.split(r',(?![^(]*\))', sel.group(1)) if c.strip()]
+        raw = sel.group(1).strip()
+        columns = [p.strip() for p in _COMMA_OUTSIDE_PARENS.split(raw) if p.strip()]
 
-    # 3) Upstream sources from FROM/JOIN
-    sources = set()
-    for pair in re.findall(r'\bFROM\s+([^\s,()]+)|\bJOIN\s+([^\s,()]+)', sql, re.IGNORECASE):
-        for t in pair:
-            if t:
-                sources.add(t.strip('"'))
+    # 3) upstream sources -> inputs[]
+    srcs: Set[str] = set()
+    for g1, g2 in _SOURCE_TOKENS_RE.findall(sql):
+        ident = g1 or g2
+        if ident:
+            srcs.add(_norm_ident(ident))
 
-    return SQLViewModel(name=name, sql=sql, columns=cols, inputs=sorted(sources))
+    return SQLViewModel(name=name, sql=sql, columns=columns, inputs=sorted(srcs))
