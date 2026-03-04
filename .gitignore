@@ -2,3 +2,9 @@
 __pycache__/
 *.pyc
 .DS_Store
+*.zip
+.streamlit/config.toml
+.env
+*.log
+test_csn_export.py
+app/assets/ppt.py

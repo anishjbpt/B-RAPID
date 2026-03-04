@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Set
+from typing import List, Set, Optional
 import re
 
 @dataclass
@@ -8,6 +8,9 @@ class SQLViewModel:
     sql: str
     columns: List[str] = field(default_factory=list)
     inputs: List[str] = field(default_factory=list)  # upstream tables/views
+    where: Optional[str] = None
+    group_by: Optional[str] = None
+    having: Optional[str] = None
 
 # split on commas that are NOT inside parentheses
 _COMMA_OUTSIDE_PARENS = re.compile(r',(?=(?:[^()]*\([^()]*\))*[^()]*$)')
@@ -32,6 +35,11 @@ _SOURCE_TOKENS_RE = re.compile(
     r'\b(?:LEFT|RIGHT|FULL|INNER|OUTER|CROSS)?\s*JOIN\s+((?:"[^"]+"|\w+)(?:\.(?:"[^"]+"|\w+))?)',
     re.IGNORECASE
 )
+
+# Clauses
+_WHERE_RE = re.compile(r'\bWHERE\b\s+(.*?)(?:\bGROUP\s+BY\b|\bHAVING\b|\bORDER\s+BY\b|\bLIMIT\b|\bUNION\b|$)', re.IGNORECASE | re.DOTALL)
+_GROUP_BY_RE = re.compile(r'\bGROUP\s+BY\b\s+(.*?)(?:\bHAVING\b|\bORDER\s+BY\b|\bLIMIT\b|\bUNION\b|$)', re.IGNORECASE | re.DOTALL)
+_HAVING_RE = re.compile(r'\bHAVING\b\s+(.*?)(?:\bORDER\s+BY\b|\bLIMIT\b|\bUNION\b|$)', re.IGNORECASE | re.DOTALL)
 
 # Correctly handle HTML &gt; -> >
 _HTML_GT = re.compile(r'&gt;', re.IGNORECASE)
@@ -67,4 +75,23 @@ def parse_hdbview_or_sql(path: str) -> SQLViewModel:
         if ident:
             srcs.add(_norm_ident(ident))
 
-    return SQLViewModel(name=name, sql=sql, columns=columns, inputs=sorted(srcs))
+    # 4) Extra clauses
+    where_clause = None
+    m_where = _WHERE_RE.search(sql)
+    if m_where:
+        where_clause = m_where.group(1).strip()
+
+    group_by_clause = None
+    m_gb = _GROUP_BY_RE.search(sql)
+    if m_gb:
+        group_by_clause = m_gb.group(1).strip()
+
+    having_clause = None
+    m_hav = _HAVING_RE.search(sql)
+    if m_hav:
+        having_clause = m_hav.group(1).strip()
+
+    return SQLViewModel(
+        name=name, sql=sql, columns=columns, inputs=sorted(srcs),
+        where=where_clause, group_by=group_by_clause, having=having_clause
+    )

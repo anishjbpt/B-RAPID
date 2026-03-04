@@ -3,6 +3,7 @@ from .artifacts import ArtifactNode
 from .parse_cv import CVModel
 from .parse_sql_view import SQLViewModel
 from .parse_procedure import ProcedureModel
+from .parse_abap_cds import ABAPCDSModel  # NEW
 
 def graph_from_cv(model: CVModel) -> Dict[str, ArtifactNode]:
     g: Dict[str, ArtifactNode] = {}
@@ -17,8 +18,8 @@ def graph_from_sql_views(views: List[SQLViewModel]) -> Dict[str, ArtifactNode]:
     g: Dict[str, ArtifactNode] = {}
     for v in views:
         g[v.name] = ArtifactNode(id=v.name, kind="SQLView", inputs=list(v.inputs))
-        for src in v.inputs:
-            g.setdefault(src, ArtifactNode(id=src, kind="Table", inputs=[]))
+    for src in v.inputs:
+        g.setdefault(src, ArtifactNode(id=src, kind="Table", inputs=[]))
     return g
 
 def graph_from_procedures(procs: List[ProcedureModel]) -> Dict[str, ArtifactNode]:
@@ -28,6 +29,14 @@ def graph_from_procedures(procs: List[ProcedureModel]) -> Dict[str, ArtifactNode
         g[p.name] = ArtifactNode(id=p.name, kind="Procedure", inputs=deps)
         for t in p.reads_from + p.writes_to:
             g.setdefault(t, ArtifactNode(id=t, kind="Table", inputs=[]))
+    return g
+
+# NEW: ABAP CDS graph
+def graph_from_abap_cds(model: ABAPCDSModel) -> Dict[str, ArtifactNode]:
+    g: Dict[str, ArtifactNode] = {}
+    g[model.name] = ArtifactNode(id=model.name, kind="ABAP_CDS", inputs=list(model.sources))
+    for src in model.sources:
+        g.setdefault(src, ArtifactNode(id=src, kind="Table", inputs=[]))
     return g
 
 def merge_graphs(*graphs: Dict[str, ArtifactNode]) -> Dict[str, ArtifactNode]:
