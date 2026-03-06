@@ -34,6 +34,55 @@ def _subbullet(doc: Document, text: str):
     # Indented bullet via a leading hyphen; Word will keep same bullet style
     doc.add_paragraph(f"- {text}", style="List Bullet")
 
+
+def _step_by_step_cv_in_datasphere(doc: Document):
+    _heading(doc, "Step-by-step set-up in Datasphere", 2)
+    _bullet(doc, "Prepare **sources**: import as **Remote Tables** (federate) or use **Replication Flows**/**Remote Table replication** if you need persisted/local data.")
+    _bullet(doc, "Rebuild the logic:")
+    _subbullet(doc, "Option A (SQL): create a **SQL View** and translate node logic (Projection/Join/Union/Aggregation) into SQL; define **input parameters** (if any) in the editor.")
+    _subbullet(doc, "Option B (Graphical): create a **Graphical View**, add sources, and recreate joins/aggregations and calculated columns.")
+    _bullet(doc, "Validate:")
+    _subbullet(doc, "Compare record counts for a known slice; reconcile **joins**, **filters**, and **measures**.")
+    _subbullet(doc, "Check **semantic settings** (data category, view type) and descriptions.")
+    _bullet(doc, "Deploy the view and smoke‑test with business keys.")
+
+def _notes_cv(doc: Document):
+    _heading(doc, "Notes & Considerations", 3)
+    _bullet(doc, "If the original CV used a **star join**, prefer a single SQL View with explicit joins or a Graphical View with a star‑join layout.")
+    _bullet(doc, "Recreate **calculated measures** and **filters** exactly; confirm numeric precision/scale and date/timestamp semantics.")
+    _bullet(doc, "If parameters/variables exist, define them in the Datasphere view and reflect them in SQL filters or input mappings.")
+
+def _step_by_step_sql_in_datasphere(doc: Document):
+    _heading(doc, "Step-by-step set-up in Datasphere", 2)
+    _bullet(doc, "Ensure **base tables/views** exist in the target space (Remote or Local/Replicated).")
+    _bullet(doc, "Create an **SQL View** and paste the final SQL.")
+    _bullet(doc, "Adjust **column data types** where required and set labels/semantics.")
+    _bullet(doc, "Deploy and validate using representative business keys; reconcile aggregations and filters.")
+
+def _notes_sql(doc: Document):
+    _heading(doc, "Notes & Considerations", 3)
+    _bullet(doc, "If your SQL uses database‑specific functions, check dialect compatibility in Datasphere and replace with supported expressions.")
+    _bullet(doc, "For very large joins/aggregations, consider **replicating** hot tables to local storage for performance.")
+    _bullet(doc, "Document any hard‑coded date ranges / predicates and externalize them via input parameters if needed.")
+
+def _step_by_step_proc_in_datasphere(doc: Document):
+    _heading(doc, "Step-by-step set-up in Datasphere", 2)
+    _bullet(doc, "Identify the **stages** inside the procedure (reads → transforms → writes).")
+    _bullet(doc, "Rebuild as **SQL Views** and/or **Transformation Flows**:")
+    _subbullet(doc, "Set up **Local Tables** for intermediate staging if needed.")
+    _subbullet(doc, "Translate procedural steps into SQL transformations or flow operators (projection, join, filter, aggregation).")
+    _bullet(doc, "If the procedure writes to permanent targets, create those **Local Tables** first.")
+    _bullet(doc, "Deploy and run end‑to‑end; validate row counts and key‑by‑key samples.")
+
+def _notes_proc(doc: Document):
+    _heading(doc, "Notes & Considerations", 3)
+    _bullet(doc, "Break monolithic logic into smaller, testable transformations; avoid temp‑table name clashes by using deterministic table/view names.")
+    _bullet(doc, "Parameterize constants (dates, thresholds) via Task Chains/CLI, or convert them to view parameters.")
+    _bullet(doc, "If the original procedure called other procedures, inline or modularize them as separate views/flows and orchestrate with **Task Chains**.")
+
+
+
+
 def _fmt_list(items: List[str], limit: int | None = None) -> str:
     if not items:
         return ""
@@ -150,6 +199,13 @@ def render_docx_general(
                 _bullet(doc, f"{ds_id} → {uri}")
         _step_by_step_calc_view(doc, cv_model)
 
+
+        # === NEW: tailored steps + notes for Calculation View ===
+        _step_by_step_cv_in_datasphere(doc)
+        _notes_cv(doc)
+
+
+
     # -----------------------------
     # SQL Views section
     # -----------------------------
@@ -166,6 +222,12 @@ def render_docx_general(
                 preview = _fmt_list(v.columns, limit=10)
                 _bullet(doc, "Output columns (preview): " + preview)
             _step_by_step_sql_view(doc, v)
+
+
+            # === NEW: tailored steps + notes for SQL View ===
+            _step_by_step_sql_in_datasphere(doc)
+            _notes_sql(doc)
+          
 
     # -----------------------------
     # Procedures section
@@ -186,6 +248,13 @@ def render_docx_general(
             if getattr(p, 'temp_tables', None):
                 _bullet(doc, "Temp tables used: " + _fmt_list(p.temp_tables))
             _step_by_step_procedure(doc, p)
+
+
+            # === NEW: tailored steps + notes for Procedure ===
+            _step_by_step_proc_in_datasphere(doc)
+            _notes_proc(doc)
+
+
 
     # -----------------------------
     # Combined dependency order (optional)

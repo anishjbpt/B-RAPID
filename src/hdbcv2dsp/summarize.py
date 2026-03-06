@@ -58,30 +58,123 @@ def summarize_procedure(p: ProcedureModel) -> List[str]:
 # SQL View summarization
 # -------------------------------
 def summarize_sql_view(v: SQLViewModel) -> List[str]:
+    """
+    Produce plain-English bullets for a SQL View:
+      - outputs/inputs/join count
+      - DISTINCT / aggregate functions
+      - WHERE (preview)
+      - GROUP BY (column preview)
+      - HAVING (preview)
+      - ORDER BY (column + ASC/DESC preview)
+      - LIMIT / TOP (row limit)
+    """
     bullets: List[str] = []
-    sql = v.sql.upper()
-    # SELECT list / columns
-    if v.columns:
+    # Keep both cases to parse; use original for substring captures, uppercase for quick checks
+    sql_raw = v.sql or ""
+    sql_up = sql_raw.upper()
+
+    # 1) Columns / outputs
+    if getattr(v, "columns", None):
         bullets.append(f"Outputs **{len(v.columns)}** columns (preview: {_compact_list(v.columns)}).")
-    # Inputs / joins
-    if v.inputs:
+
+    # 2) Inputs / joins
+    if getattr(v, "inputs", None):
         bullets.append(f"Sources from: {_compact_list(v.inputs)}.")
-    join_count = len(re.findall(r'\bJOIN\b', sql, re.IGNORECASE))
+    join_count = len(re.findall(r'\bJOIN\b', sql_raw, re.IGNORECASE))
     if join_count:
         bullets.append(f"Contains ~{join_count} JOINs.")
-    # DISTINCT / GROUP BY / aggregation cues
-    if "DISTINCT" in sql:
+
+    # 3) DISTINCT / aggregation cues
+    if "DISTINCT" in sql_up:
         bullets.append("Uses **SELECT DISTINCT** to remove duplicates.")
-    if re.search(r'\bGROUP\s+BY\b', sql, re.IGNORECASE):
-        agg_funcs = re.findall(r'\b(SUM|COUNT|AVG|MIN|MAX)\s*\(', sql, re.IGNORECASE)
-        if agg_funcs:
-            bullets.append(f"Aggregates data (**{', '.join(sorted(set(a.upper() for a in agg_funcs)))}**).")
-    # WHERE clause (first occurrence) preview
-    where_m = re.search(r'\bWHERE\b(.*?)(\bGROUP\b|\bORDER\b|;|$)', v.sql, re.IGNORECASE | re.DOTALL)
+    agg_funcs = re.findall(r'\b(SUM|COUNT|AVG|MIN|MAX)\s*\(', sql_raw, re.IGNORECASE)
+    if agg_funcs:
+        bullets.append(f"Aggregates data (**{', '.join(sorted(set(a.upper() for a in agg_funcs)))}**).")
+
+    # Helper: compact preview of a captured clause
+    def _preview(text: str, n: int = 180) -> str:
+        t = " ".join((text or "").split())
+        return t[:n] + ("…" if len(t) > n else "")
+
+    # 4) WHERE preview  (stop at GROUP/HAVING/ORDER/;/$)
+    where_m = re.search(r'\bWHERE\b(.*?)(\bGROUP\b|\bHAVING\b|\bORDER\b|;|$)', sql_raw, re.IGNORECASE | re.DOTALL)
     if where_m:
-        where_txt = " ".join(where_m.group(1).split())
-        preview = where_txt[:180] + ("…" if len(where_txt) > 180 else "")
-        bullets.append(f"Filters rows in WHERE clause (preview): {preview}")
+        bullets.append(f"Filters rows in WHERE clause (preview): {_preview(where_m.group(1))}")
+
+    # 5) GROUP BY — capture list between GROUP BY and (HAVING|ORDER|;|$)
+    grp_m = re.search(r'\bGROUP\s+BY\b(.*?)(\bHAVING\b|\bORDER\b|;|$)', sql_raw, re.IGNORECASE | re.DOTALL)
+    if grp_m:
+        grp_txt = " ".join(grp_m.group(1).split())
+        # split on commas at top level to preview grouping columns
+        cols = []
+        depth = 0; buf = []
+        for ch in grp_txt:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth = max(0, depth - 1)
+            if ch == ',' and depth == 0:
+                cols.append("".join(buf).strip()); buf = []
+            else:
+                buf.append(ch)
+        if buf:
+            cols.append("".join(buf).strip())
+        cols_preview = _compact_list([c for c in cols if c], max_items=6) if cols else _preview(grp_txt, 120)
+        bullets.append(f"Groups results by: {cols_preview}")
+
+    # 6) HAVING — capture text until ORDER/;/$
+    having_m = re.search(r'\bHAVING\b(.*?)(\bORDER\b|;|$)', sql_raw, re.IGNORECASE | re.DOTALL)
+    if having_m:
+        bullets.append(f"Filters groups in HAVING clause (preview): {_preview(having_m.group(1))}")
+
+    # 7) ORDER BY — capture items until ; or end
+    #    We also extract ASC/DESC per item when present.
+    ord_m = re.search(r'\bORDER\s+BY\b(.*?)(;|$)', sql_raw, re.IGNORECASE | re.DOTALL)
+    if ord_m:
+        ord_txt = " ".join(ord_m.group(1).split())
+        # split respecting parentheses
+        items, depth, buf = [], 0, []
+        for ch in ord_txt:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth = max(0, depth - 1)
+            if ch == ',' and depth == 0:
+                items.append("".join(buf).strip()); buf = []
+            else:
+                buf.append(ch)
+        if buf:
+            items.append("".join(buf).strip())
+        # Extract direction hints
+        ord_preview = []
+        for it in items[:6]:
+            m_dir = re.search(r'\b(ASC|DESC)\b', it, re.IGNORECASE)
+            dir_txt = f" {m_dir.group(1).upper()}" if m_dir else ""
+            # Try to pull the leading expression/column name
+            # Strip trailing ASC/DESC and NULLS clauses for display
+            clean = re.sub(r'\b(ASC|DESC)\b.*$', '', it, flags=re.IGNORECASE).strip()
+            ord_preview.append(f"{clean}{dir_txt}")
+        bullets.append("Orders results by: " + ", ".join(ord_preview) + (" …" if len(items) > 6 else ""))
+
+    # 8) LIMIT / TOP — support LIMIT n, FETCH FIRST n ROWS ONLY, and SELECT TOP n
+    # LIMIT n
+    lim_m = re.search(r'\bLIMIT\s+(\d+)\b', sql_raw, re.IGNORECASE)
+    # FETCH FIRST n ROWS ONLY
+    fetch_m = re.search(r'\bFETCH\s+FIRST\s+(\d+)\s+ROWS?\s+ONLY\b', sql_raw, re.IGNORECASE)
+    # TOP n (at start of SELECT list)
+    top_m = re.search(r'\bSELECT\b\s+TOP\s+(\d+)\b', sql_raw, re.IGNORECASE)
+
+    lim_val = None
+    if lim_m:
+        lim_val = lim_m.group(1)
+    elif fetch_m:
+        lim_val = fetch_m.group(1)
+    elif top_m:
+        lim_val = top_m.group(1)
+
+    if lim_val:
+        bullets.append(f"Limits result set to **{lim_val}** row(s).")
+
     return bullets
 
 # -------------------------------
