@@ -435,7 +435,7 @@ with export_tab:
             [
                 "Create View(s) only (no tables)",
                 "Create Local Table(s) from uploaded schemas",
-                "Replication Flow (ABAP CDS)",  # NEW
+                "Replication Flow (ABAP CDS)",
             ],
             index=0,
             key="generation_mode",
@@ -444,20 +444,29 @@ with export_tab:
         st.session_state["pref_generation_mode"] = generation_mode
 
         colA, colB = st.columns(2)
+
+        # Left column: Analytic Model stays available for any mode (optional add-on)
         with colA:
             include_analytic = st.checkbox(
                 "Include Analytic Model (template)",
                 value=False,
                 key="include_analytic",
             )
+
+        # Right column: View representation ONLY for View-only mode
         with colB:
-            view_mode = st.selectbox(
-                "View representation",
-                ["SQL View (recommended)", "Graphical View (experimental)"],
-                index=0 if st.session_state["pref_view_mode"].startswith("SQL View") else 1,
-                key="view_mode",
-            )
-            st.session_state["pref_view_mode"] = view_mode
+            if generation_mode.startswith("Create View(s)"):
+                # show the control (remember last choice)
+                view_mode = st.selectbox(
+                    "View representation",
+                    ["SQL View (recommended)", "Graphical View (experimental)"],
+                    index=0 if st.session_state.get("pref_view_mode", "SQL View (recommended)").startswith("SQL View") else 1,
+                    key="view_mode",
+                )
+                st.session_state["pref_view_mode"] = view_mode
+            else:
+                # hide the control and silently enforce SQL for downstream code
+                st.session_state["pref_view_mode"] = "SQL View (recommended)"
 
     # Prepare holders
     col_left, col_right = st.columns([2, 1])
@@ -615,8 +624,9 @@ with export_tab:
                                 "Export skipped: Please ensure the required tables exist, or go back and create/import the table JSON first."
                             )
                             return None
-                    # Normalize view mode and native bytes
-                    mode_views = 'sql' if st.session_state.get('view_mode', 'SQL View (recommended)').startswith('SQL') else 'graphical'
+                    
+                    # Use the normalized preference; when the control is hidden, we forced it to "SQL View (recommended)"
+                    mode_views = 'sql' if st.session_state.get('pref_view_mode', 'SQL View (recommended)').startswith('SQL') else 'graphical'                                                
                     nb = None
                     if native_template and (force_native_template or selected_native_output in ("native", "both")):
                         nb = native_template.read()
