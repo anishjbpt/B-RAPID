@@ -6,12 +6,11 @@ import base64
 import tempfile
 from datetime import datetime
 from typing import Dict, List, Optional
-
 import streamlit as st
 
 # ------------------------------ Page config ------------------------------
 st.set_page_config(
-    page_title="SAP Datasphere Program Accelerator",
+    page_title="SphereAhead",
     page_icon="🟦",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -54,8 +53,7 @@ def _logo_img_tag(path: str, height_px: int = 72, alt: str = "Blueprint Technolo
     with open(path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
     return (
-        f'<img alt="{alt}" src="data:image/png;base64,{b64}" '
-        f'style="height:{height_px}px; width:auto; display:block;" />'
+        f'<img src="data:image/png;base64,{b64}" alt="{alt}" height="{height_px}px" />'
     )
 
 def sanitize_filename(name: str) -> str:
@@ -63,7 +61,7 @@ def sanitize_filename(name: str) -> str:
     if not name:
         name = "Rebuild_Guide.docx"
     # Remove generally illegal characters for filenames across platforms
-    name = re.sub(r'[\/:*?"<>|\\]+', "", name)
+    name = re.sub(r'[\\/:\*?"<>|\]+', "", name)
     name = name.strip(" .")
     if not name.lower().endswith(".docx"):
         name += ".docx"
@@ -114,9 +112,7 @@ def _split_columns_block(cols_block: str) -> List[str]:
     return parts
 
 def _parse_ddl_sql(text: str) -> Optional[Dict[str, dict]]:
-    """Parse simple CREATE TABLE DDL -> canonical schema.
-    Returns {table_name: {"columns": [{"name":..., "type":..., ...}]}}
-    """
+    """Parse simple CREATE TABLE DDL -> canonical schema. Returns {table_name: {"columns": [{"name":..., "type":..., ...}]}}"""
     try:
         m = re.search(
             r'CREATE\s+TABLE\s+(["\w\.]+)\s*\((.*)\)\s*;?',
@@ -195,57 +191,21 @@ def parse_uploaded_schemas(files) -> Dict[str, dict]:
 # ------------------------------ Header ------------------------------
 def render_header():
     # Tunables for look & feel
-    LOGO_HEIGHT = 80        # increase/decrease to taste (e.g., 72–96)
-    TITLE_FONTSIZE = 38     # large title like your old masthead
+    LOGO_HEIGHT = 80  # increase/decrease to taste (e.g., 72–96)
+    TITLE_FONTSIZE = 38  # large title like your old masthead
     SUBTITLE_FONTSIZE = 16  # subtle subtitle
-    MAX_WIDTH = 1400        # keeps header from stretching too wide
+    MAX_WIDTH = 1400  # keeps header from stretching too wide
 
     logo_html = _logo_img_tag(APP_LOGO, height_px=LOGO_HEIGHT)
 
     st.markdown(
         f"""
-<style>
-/* Contain header width on very wide screens */
-.header-wrap {{
-  max-width: {MAX_WIDTH}px;
-  margin: 0 auto 0.75rem auto;
-}}
-.header-row {{
-  display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 18px;
-  align-items: center;
-}}
-.header-title {{
-  margin: 0;
-  font-weight: 800;
-  line-height: 1.15;
-  font-size: {TITLE_FONTSIZE}px;
-}}
-.header-sub {{
-  margin: 6px 0 0 0;
-  font-size: {SUBTITLE_FONTSIZE}px;
-  color: var(--text-color-secondary, rgba(49,51,63,.7));
-}}
-/* Respect Streamlit themes (light/dark) */
-:root {{
-  --text-color-primary: var(--text-color, rgba(49,51,63,1));
-  --text-color-secondary: rgba(49,51,63,.7);
-}}
-/* Reduce title size slightly on small screens */
-@media (max-width: 720px) {{
-  .header-title {{ font-size: {max(26, TITLE_FONTSIZE-8)}px; }}
-  .header-row {{ grid-template-columns: auto 1fr; column-gap: 12px; }}
-}}
-</style>
-
-
-<div class="header-wrap">
-  <div class="header-row">
-    <div class="header-logo">{logo_html}</div>
-    <div class="header-text">
-      <h1 class="header-title">SAP Datasphere Program Accelerator</h1>
-      <div class="header-sub">
+<div style="max-width:{MAX_WIDTH}px;margin:0 auto 0.75rem auto;">
+  <div style="display:grid;grid-template-columns:auto 1fr;column-gap:18px;align-items:center;">
+    <div>{logo_html}</div>
+    <div>
+      <h2 style="margin:0;font-weight:800;line-height:1.15;font-size:{TITLE_FONTSIZE}px;">SphereAhead</h2>
+      <div style="margin:6px 0 0 0;font-size:{SUBTITLE_FONTSIZE}px;color:rgba(49,51,63,.7);">
         Upload HANA Calculation Views, SQL Views, or Stored Procedures → auto‑generate a Datasphere rebuild guide and importable CSN/JSON.
       </div>
     </div>
@@ -259,9 +219,7 @@ def render_header():
 render_header()
 
 # ------------------------------ Tabs (DEFINE BEFORE USING) ------------------------------
-main_tab, export_tab = st.tabs(
-    ["📄 Rebuild Guide (DOCX)", "📦 Export (CSN/JSON)"]
-)
+main_tab, export_tab = st.tabs(["📄 Rebuild Guide (DOCX)", "📦 Export (CSN/JSON)"])
 
 # =====================================================================
 # DOCX TAB
@@ -441,17 +399,15 @@ with export_tab:
             key="generation_mode",
             horizontal=True,
         )
+
+        prev_mode = st.session_state.get("prev_generation_mode")
+        if prev_mode != generation_mode:
+            st.session_state["qa_selected"] = None
+        st.session_state["prev_generation_mode"] = generation_mode
+
         st.session_state["pref_generation_mode"] = generation_mode
 
-        colA, colB = st.columns(2)
-
-        # Left column: Analytic Model stays available for any mode (optional add-on)
-        with colA:
-            include_analytic = st.checkbox(
-                "Include Analytic Model (template)",
-                value=False,
-                key="include_analytic",
-            )
+        colA, colB = st.columns(2)                
 
         # Right column: View representation ONLY for View-only mode
         with colB:
@@ -474,6 +430,25 @@ with export_tab:
     table_schemas: Dict[str, dict] = {}
     abap_cds_e: Optional[ABAPCDSModel] = None
 
+    # --- Quick actions: selected indicator styling ---
+    st.markdown(
+        """
+        <style>
+        .qa-selected-indicator {
+            color: #E53935;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    # Helper to determine if button is active and should be highlighted
+    def is_selected(mode):
+        return st.session_state.get("qa_selected") == mode
+
     # ---------------------- VIEW-ONLY MODE ----------------------
     if generation_mode.startswith("Create View"):
         with col_left:
@@ -483,33 +458,63 @@ with export_tab:
                     type=["hdbcalculationview", "xml", "hdbview", "hdbprocedure", "sql"],
                     key="uploader_export",
                 )
+
         with col_right:
             with st.expander("⚙️ Native SQL View template (optional)", expanded=True):
                 st.caption(
-                    "Upload a SQL View JSON exported from Datasphere. We'll clone its shape and inject your SELECT so the editor shows it."
+                    "Upload a SQL View JSON exported from your Datasphere space. We'll clone it and inject your uploaded SQL so the editor shows it after import."
                 )
                 native_template = st.file_uploader(
                     "Upload Native SQL View JSON",
                     type=["json"],
                     key="native_sqlview_template",
                     accept_multiple_files=False,
-                )
+                )        
+
+                # Show the Output format picker only when a template is provided.
+                # Otherwise, default to Neutral (template-free).
                 if native_template:
+                    # Keep previous selection if available, otherwise default to Neutral
+                    prior_choice = st.session_state.get("pref_native_output", "Neutral only (csn.json)")
+                    choices = [
+                        "Neutral only (csn.json)",
+                        "Native only (csn.json)",
+                        "Both (neutral + native_csn.json)",
+                    ]
+                    default_index = (
+                        0 if prior_choice.startswith("Neutral") else (1 if prior_choice.startswith("Native only") else 2)
+                    )
                     choice = st.selectbox(
                         "Output format",
-                        [
-                            "Neutral only (csn.json)",
-                            "Native only (csn.json)",
-                            "Both (neutral + native_csn.json)",
-                        ],
-                        index=0
-                        if st.session_state["pref_native_output"].startswith("Neutral")
-                        else (1 if st.session_state["pref_native_output"].startswith("Native only") else 2),
+                        choices,
+                        index=default_index,
                         key="native_output_mode",
+                        help="""
+**Neutral:** Template‑free CSN (modelled view). SQL **may not be** shown in the SQL Editor after import.
+
+**Native:** Requires a Datasphere-exported SQL View template. Your SQL is injected into `@DataWarehouse.sqlEditor.query`, so it **appears in the editor** after import.
+
+**Both:** Includes `csn.json` (neutral) **and** `native_csn.json` (native) in the ZIP.
+""",
                     )
                     st.session_state["pref_native_output"] = choice
                 else:
                     st.session_state["pref_native_output"] = "Neutral only (csn.json)"
+
+            # Analytic Model Template upload ONLY for Replication Flow Mode
+            analytic_model_template = None
+            if generation_mode == "Replication Flow (ABAP CDS)":
+                with st.expander("📊 Analytic Model Template (optional)", expanded=False):
+                    st.caption(
+                        "Upload an Analytic Model JSON exported from your Datasphere tenant. "
+                        "SphereAhead will clone it and inject Replication Flow outputs."
+                    )
+                    analytic_model_template = st.file_uploader(
+                        "Upload Analytic Model Template JSON",
+                        type=["json"],
+                        key="analytic_model_template",
+                        accept_multiple_files=False,
+                    )                    
 
         # ---------------------- Common: Package name ----------------------
         with st.expander("🏷️ Package name", expanded=False):
@@ -533,10 +538,12 @@ with export_tab:
                 tmp_path = os.path.join(tmp_dir, safe_name)
                 with open(tmp_path, "wb") as f:
                     f.write(uploaded_export.read())
+
                 ext = os.path.splitext(safe_name)[1].lower()
 
                 if ext in [".hdbcalculationview", ".xml"]:
                     cv_model_e = parse_hdbcalculationview(tmp_path)
+
                 elif ext in [".hdbview", ".sql", ".hdbprocedure"]:
                     with open(tmp_path, "r", encoding="utf-8", errors="ignore") as fh:
                         text = fh.read()
@@ -591,19 +598,42 @@ with export_tab:
 
         # ---------------------- Quick actions + Generate / Download (RIGHT) ----------------------
         with col_right:
-            st.markdown("#### ⚡ Quick actions")
-            qa_cols = st.columns(3)
-            qa_native = qa_cols[0].button(
-                "⚡ View-only: Native (csn.json)",
-                key="qa_view_native",
-                disabled=not (uploaded_export and (sql_views_e or cv_model_e)),
-            )
-            qa_neutral = qa_cols[1].button(
-                "⚡ View-only: Neutral (csn.json)",
-                key="qa_view_neutral",
-                disabled=not (uploaded_export and (sql_views_e or cv_model_e)),
-            )
-            qa_tables = qa_cols[2].button("⚡ Tables-only ZIP", key="qa_tables_zip", disabled=True)
+            # Selection badge (optional; you can keep or remove)
+            qa_selected = st.session_state.get("qa_selected", None)
+            badge = ""
+            if qa_selected == "native":
+                badge = " <span style='font-size:0.9rem;color:rgba(49,51,63,.7)'>· Selected: <b>Native</b></span>"
+            elif qa_selected == "neutral":
+                badge = " <span style='font-size:0.9rem;color:rgba(49,51,63,.7)'>· Selected: <b>Neutral</b></span>"
+            elif qa_selected == "tables":
+                badge = " <span style='font-size:0.9rem;color:rgba(49,51,63,.7)'>· Selected: <b>Tables</b></span>"
+            st.markdown(f"#### ⚡ Quick actions{badge}", unsafe_allow_html=True)
+
+            # determine if a native template is present (uploaded in the right column expander)
+            has_native_template = bool(native_template)
+
+            # Scope the row so rules don't leak
+            st.markdown("<div id='qa-scope'>", unsafe_allow_html=True)
+
+            # --- 3. The Buttons with Custom Styling ---
+            qa_cols = st.columns(2)
+
+            # 1. Native
+            with qa_cols[0]:
+                native_disabled = not (uploaded_export and (sql_views_e or cv_model_e) and bool(native_template))
+                if is_selected("native"):
+                    st.markdown('<div class="qa-selected-indicator">✓ Selected</div>', unsafe_allow_html=True)
+                qa_native = st.button("⚡ View-only: Native (csn.json)", key="qa_view_native", disabled=native_disabled, use_container_width=True)
+
+            # 2. Neutral
+            with qa_cols[1]:
+                neutral_disabled = not (uploaded_export and (sql_views_e or cv_model_e))
+                if is_selected("neutral"):
+                    st.markdown('<div class="qa-selected-indicator">✓ Selected</div>', unsafe_allow_html=True)
+                qa_neutral = st.button("⚡ View-only: Neutral (csn.json)", key="qa_view_neutral", disabled=neutral_disabled, use_container_width=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)        
+
 
             # Prepare native output mode for main Generate
             choice = st.session_state.get("native_output_mode", st.session_state["pref_native_output"])
@@ -624,48 +654,78 @@ with export_tab:
                                 "Export skipped: Please ensure the required tables exist, or go back and create/import the table JSON first."
                             )
                             return None
-                    
+
                     # Use the normalized preference; when the control is hidden, we forced it to "SQL View (recommended)"
-                    mode_views = 'sql' if st.session_state.get('pref_view_mode', 'SQL View (recommended)').startswith('SQL') else 'graphical'                                                
+                    mode_views = 'sql' if st.session_state.get('pref_view_mode', 'SQL View (recommended)').startswith('SQL') else 'graphical'
+
                     nb = None
                     if native_template and (force_native_template or selected_native_output in ("native", "both")):
                         nb = native_template.read()
+
                     views_for_export = [] if selected_table_mode == 'tables_only' else sql_views_e
+
+                    # Determine analytic model template bytes ONLY for Replication Flow
+                    analytic_model_template_bytes = None
+                    if generation_mode == "Replication Flow (ABAP CDS)" and analytic_model_template:
+                        analytic_model_template_bytes = analytic_model_template.read()
+
                     zip_bytes, manifest = build_csn_artifacts_zip(
                         package_name=package_name,
                         cv_model=None if selected_table_mode == 'tables_only' else cv_model_e,
                         sql_views=views_for_export,
                         procedures=[] if selected_table_mode == 'tables_only' else procedures_e,
                         graph=None if selected_table_mode == 'tables_only' else (graph_e if graph_e else None),
-                        table_mode=selected_table_mode,      # 'view_only' or 'tables_only'
+                        table_mode=selected_table_mode,  # 'view_only' or 'tables_only'
                         view_mode=mode_views,
-                        include_analytic=include_analytic,
+                        include_analytic=false,  # For now, only the Replication Flow mode supports analytic models, and it's gated on having a template upload
                         native_template_bytes=nb,
                         native_single_file=False,
                         table_schemas=table_schemas,
-                        native_output_mode=selected_native_output,  # "neutral" | "native" | "both"
+                        native_output_mode=selected_native_output,  # "neutral" | "native" | "both",                                                                        
+                        analytic_model_template_bytes=analytic_model_template_bytes,  # NEW
                     )
                     return zip_bytes, manifest
                 except Exception as e:
                     st.error(f"Failed to build packages: {e}")
                     return None
 
+            # Main "Generate" button
             gen_csn_btn = st.button("🚀 Generate CSN/JSON", type="secondary", key="gen_csn")
 
-        # Execute quick actions or main generate
-        build_result = None
-        if qa_native:
-            build_result = _do_build('view_only', 'native', force_native_template=True)
-        elif qa_neutral:
-            build_result = _do_build('view_only', 'neutral')
-        elif qa_tables:
-            build_result = _do_build('tables_only', 'neutral')
+            # --- RUN ANY PENDING BUILD FROM A PREVIOUS CLICK (AFTER RERUN) ---
+            build_result = None
+            _pending = st.session_state.pop("_pending_build", None)
+            if _pending:
+                tm, nm, force_tpl = _pending  # ('view_only'|'tables_only', 'neutral'|'native'|'both', bool)
+                build_result = _do_build(tm, nm, force_native_template=force_tpl)
 
-        if not build_result and gen_csn_btn:
-            tm = 'view_only'
-            build_result = _do_build(tm, exporter_native_mode)
+                # NEW: if build was skipped/blocked (e.g., validation pre-req not confirmed), remove the highlight
+                if build_result is None:
+                    st.session_state["qa_selected"] = None        
 
-        with col_right:
+
+            # --- HANDLE QUICK ACTIONS + MAIN GENERATE: QUEUE BUILD, SET HIGHLIGHT, AND RERUN ---
+            if qa_native:
+                st.session_state["qa_selected"] = "native"
+                st.session_state["_pending_build"] = ('view_only', 'native', True)
+                st.rerun()
+
+            elif qa_neutral:
+                st.session_state["qa_selected"] = "neutral"
+                st.session_state["_pending_build"] = ('view_only', 'neutral', False)
+                st.rerun()
+
+            elif gen_csn_btn:
+                # Map exporter mode → selection
+                if exporter_native_mode == "native":
+                    st.session_state["qa_selected"] = "native"
+                else:
+                    # For "neutral" and "both", highlight Neutral (unless you add a third quick action for 'Both')
+                    st.session_state["qa_selected"] = "neutral"
+                st.session_state["_pending_build"] = ('view_only', exporter_native_mode, False)
+                st.rerun()
+
+            # ---- DOWNLOAD / SUCCESS AREA (no extra 'with col_right:' here; we're already inside it) ----
             if build_result:
                 zip_bytes, manifest = build_result
                 st.success("✅ Package generated.")
@@ -679,7 +739,8 @@ with export_tab:
                 with st.expander("🧾 Manifest preview"):
                     st.code(json.dumps(manifest, indent=2))
                 st.info(
-                    "If you chose a **Native** output, the SQL appears in the Datasphere SQL editor after import. Remember to **deploy** after import."
+                    "If you chose a **Native** output, the SQL appears in the Datasphere SQL editor after import. "
+                    "Remember to **deploy** after import."
                 )
 
     # ---------------------- TABLES-ONLY MODE ----------------------
@@ -713,46 +774,57 @@ with export_tab:
             )
 
         with col_right:
+            # Show selection indicator if Tables button is selected
+            if is_selected("tables"):
+                st.markdown('<div class="qa-selected-indicator">✓ Selected</div>', unsafe_allow_html=True)
             qa_tables = st.button(
                 "⚡ Tables-only ZIP",
                 key="qa_tables_only_zip",
                 disabled=not bool(table_schemas),
             )
-
-        if qa_tables:
-            try:
-                zip_bytes, manifest = build_csn_artifacts_zip(
-                    package_name=package_name,
-                    cv_model=None,
-                    sql_views=[],
-                    procedures=[],
-                    graph=None,
-                    table_mode='tables_only',
-                    view_mode='sql',
-                    include_analytic=False,
-                    native_template_bytes=None,
-                    native_single_file=False,
-                    table_schemas=table_schemas,
-                    native_output_mode="neutral",
-                )
-                st.success("✅ Tables-only package generated.")
-                st.download_button(
-                    label="⬇️ Download Export Package (ZIP)",
-                    data=zip_bytes,
-                    file_name=f"{package_name}.zip",
-                    mime="application/zip",
-                    key="dl_tables_zip",
-                )
-                with st.expander("🧾 Manifest preview"):
-                    st.code(json.dumps(manifest, indent=2))
-                st.info(
-                    "This package contains **table entities only**. Import **csn.json** and deploy tables before creating views."
-                )
-            except Exception as e:
-                st.error(f"Failed to build packages: {e}")
+            if qa_tables:
+                # Set the selection state and flag for build on next rerun
+                st.session_state["qa_selected"] = "tables"
+                st.session_state["_build_tables_zip"] = True
+                st.rerun()
+            
+            # Build if flagged on previous run
+            if st.session_state.get("_build_tables_zip"):
+                st.session_state.pop("_build_tables_zip") 
+                try:
+                    zip_bytes, manifest = build_csn_artifacts_zip(
+                        package_name=package_name,
+                        cv_model=None,
+                        sql_views=[],
+                        procedures=[],
+                        graph=None,
+                        table_mode='tables_only',
+                        view_mode='sql',
+                        include_analytic=False,
+                        native_template_bytes=None,
+                        native_single_file=False,
+                        table_schemas=table_schemas,
+                        native_output_mode="neutral",
+                    )
+                    st.success("✅ Tables-only package generated.")
+                    st.download_button(
+                        label="⬇️ Download Export Package (ZIP)",
+                        data=zip_bytes,
+                        file_name=f"{package_name}.zip",
+                        mime="application/zip",
+                        key="dl_tables_zip",
+                    )
+                    with st.expander("🧾 Manifest preview"):
+                        st.code(json.dumps(manifest, indent=2))
+                    st.info(
+                        "This package contains **table entities only**. Import **csn.json** and deploy tables before creating views."
+                    )
+                except Exception as e:
+                    st.error(f"Failed to build packages: {e}")                       
 
     # ---------------------- REPLICATION FLOW (ABAP CDS) ----------------------
     else:
+        abap_cds_e = None 
         # LEFT: Upload ABAP CDS and Replication Flow template
         with col_left:
             with st.expander("📤 Upload ABAP CDS and Replication Flow template", expanded=True):
@@ -768,9 +840,39 @@ with export_tab:
                     accept_multiple_files=False,
                 )
 
+            # -------------------------------------------
+            # Analytic Model (optional for RF only)
+            # -------------------------------------------
+            include_analytic = st.checkbox(
+                "Include Analytic Model (template)",
+                value=False,
+                key="include_analytic_rf"
+            )
+
+            analytic_model_template = None
+            if include_analytic:
+                with st.expander("📊 Analytic Model Template (optional)", expanded=False):
+                    st.caption(
+                        "Upload an Analytic Model JSON exported from your Datasphere tenant. "
+                        "SphereAhead will clone it and inject Replication Flow outputs."
+                    )
+                    analytic_model_template = st.file_uploader(
+                        "Upload Analytic Model Template JSON",
+                        type=["json"],
+                        key="analytic_model_template_rf",
+                        accept_multiple_files=False,
+                    )                           
+
+            abap_cds_e: Optional[ABAPCDSModel] = None
             if uploaded_export:
                 txt = uploaded_export.read().decode("utf-8", errors="ignore")
                 abap_cds_e = parse_abap_cds_text(txt)
+
+            # Convert analytic model template into bytes (RF ONLY)
+            analytic_model_template_bytes = None
+            if include_analytic and analytic_model_template:
+                analytic_model_template_bytes = analytic_model_template.read()                
+
                 with st.expander("📘 ABAP CDS summary", expanded=True):
                     st.write(f"**Name:** `{abap_cds_e.name}`")
                     if abap_cds_e.sql_view_name:
@@ -785,6 +887,7 @@ with export_tab:
             # Sanity validator
             ok_extract = bool(abap_cds_e and abap_cds_e.extraction_enabled)
             ok_params = bool(abap_cds_e and not abap_cds_e.parameters)
+
             with st.expander("🔎 Validation (sanity checks)", expanded=True):
                 st.write("• Extraction enabled:", "✅" if ok_extract else "❌")
                 st.write("• No input parameters:", "✅" if ok_params else "❌")
@@ -796,6 +899,7 @@ with export_tab:
         # RIGHT: Options + Generate
         with col_right:
             st.markdown("#### ⚙️ Options")
+
             rf_load_type = st.selectbox(
                 "Load Type",
                 ["INITIAL_ONLY", "INITIAL_AND_DELTA", "DELTA_ONLY"],
@@ -815,50 +919,50 @@ with export_tab:
                 key="rf_target_table",
             )
 
-        with st.expander("🏷️ Package name", expanded=False):
-            package_name = st.text_input(
-                "Name to embed in csn.json",
-                value=f"ds_package_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                key="pkg_name_rf",
+            with st.expander("🏷️ Package name", expanded=False):
+                package_name = st.text_input(
+                    "Name to embed in csn.json",
+                    value=f"ds_package_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    key="pkg_name_rf",
+                )
+
+            gen_rf = st.button(
+                "🚀 Generate CSN/JSON",
+                type="secondary",
+                key="gen_rf",
+                disabled=not (abap_cds_e and native_template and ok_extract and ok_params),
             )
-
-        gen_rf = st.button(
-            "🚀 Generate CSN/JSON",
-            type="secondary",
-            key="gen_rf",
-            disabled=not (abap_cds_e and native_template and ok_extract and ok_params),
-        )
-
-        if gen_rf:
-            try:
-                nb = native_template.read() if native_template else None
-                zip_bytes, manifest = build_csn_artifacts_zip(
-                    package_name=package_name,
-                    cv_model=None,
-                    sql_views=[],
-                    procedures=[],
-                    graph=None,
-                    table_mode='view_only',
-                    view_mode='sql',
-                    include_analytic=False,
-                    native_template_bytes=nb,
-                    table_schemas=None,
-                    native_output_mode="native",  # Replication Flows are native
-                    abap_cds=abap_cds_e,
-                    rf_load_type=rf_load_type,
-                    rf_content_type=(None if rf_content_type == "Unspecified" else rf_content_type),
-                    rf_target_table=target_table,
-                )
-                st.success("✅ Replication Flow package generated.")
-                st.download_button(
-                    label="⬇️ Download Export Package (ZIP)",
-                    data=zip_bytes,
-                    file_name=f"{package_name}.zip",
-                    mime="application/zip",
-                    key="dl_rf_zip",
-                )
-                with st.expander("🧾 Manifest preview"):
-                    st.code(json.dumps(manifest, indent=2))
-                st.info("After import, set source/target connections if prompted, **deploy**, and then **run**.")
-            except Exception as e:
-                st.error(f"Failed to build packages: {e}")
+            if gen_rf:
+                try:
+                    nb = native_template.read() if native_template else None
+                    zip_bytes, manifest = build_csn_artifacts_zip(
+                        package_name=package_name,
+                        cv_model=None,
+                        sql_views=[],
+                        procedures=[],
+                        graph=None,
+                        table_mode='view_only',
+                        view_mode='sql',
+                        include_analytic=include_analytic,
+                        native_template_bytes=nb,
+                        table_schemas=None,
+                        native_output_mode="native",  # Replication Flows are native
+                        abap_cds=abap_cds_e,
+                        rf_load_type=rf_load_type,
+                        rf_content_type=(None if rf_content_type == "Unspecified" else rf_content_type),
+                        rf_target_table=target_table,
+                        analytic_model_template_bytes=analytic_model_template_bytes,
+                    )
+                    st.success("✅ Replication Flow package generated.")
+                    st.download_button(
+                        label="⬇️ Download Export Package (ZIP)",
+                        data=zip_bytes,
+                        file_name=f"{package_name}.zip",
+                        mime="application/zip",
+                        key="dl_rf_zip",
+                    )
+                    with st.expander("🧾 Manifest preview"):
+                        st.code(json.dumps(manifest, indent=2))
+                    st.info("After import, set source/target connections if prompted, **deploy**, and then **run**.")
+                except Exception as e:
+                    st.error(f"Failed to build packages: {e}")
