@@ -61,7 +61,7 @@ def sanitize_filename(name: str) -> str:
     if not name:
         name = "Rebuild_Guide.docx"
     # Remove generally illegal characters for filenames across platforms
-    name = re.sub(r'[\\/:\*?"<>|\]+', "", name)
+    name = re.sub(r'[<>:"/\\|?*]+', "", name)
     name = name.strip(" .")
     if not name.lower().endswith(".docx"):
         name += ".docx"
