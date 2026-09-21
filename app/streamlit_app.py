@@ -677,7 +677,7 @@ with export_tab:
                         graph=None if selected_table_mode == 'tables_only' else (graph_e if graph_e else None),
                         table_mode=selected_table_mode,  # 'view_only' or 'tables_only'
                         view_mode=mode_views,
-                        include_analytic=false,  # For now, only the Replication Flow mode supports analytic models, and it's gated on having a template upload
+                        include_analytic=False,  # For now, only the Replication Flow mode supports analytic models, and it's gated on having a template upload
                         native_template_bytes=nb,
                         native_single_file=False,
                         table_schemas=table_schemas,
